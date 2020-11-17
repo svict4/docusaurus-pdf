@@ -113,6 +113,88 @@ export async function generatePdf(
 
   let nextPageUrl = initialDocsUrl;
 
+  await page.setContent(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+            }
+            .imgbox {
+                display: grid;
+                height: 100%;
+            }
+            .center-fit {
+                max-width: 100%;
+                max-height: 100vh;
+                margin: auto;
+            }
+        </style>
+    </head>
+    <body>
+    <div class="imgbox">
+        <img class="center-fit" src='https://curriculum.acrrm.org.au/frontpages/rural-generalist.png'>
+    </div>
+    </body>
+    </html>
+  `);
+
+  let pdfBuffer = await page.pdf({
+    path: "",
+    format: "A4",
+    printBackground: true,
+  });
+
+  generatedPdfBuffers.push(pdfBuffer);
+
+  await page.setContent(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+           
+        </style>
+    </head>
+    <body>
+    <div>
+        <div style="margin-top: 700px">
+          Australian College of Rural and Remote Medicine<br>
+          Level 2, 410 Queen Street<br>
+          GPO Box 2507<br>
+          Brisbane QLD 4001<br>
+          Ph: 07 3105 8200 Fax: 07 3105 8299<br>
+          Website: www.acrrm.org.au<br>
+          ABN: 12 078 081 848</p>
+        </div>
+        <p><b>Copyright</b></p>
+        <p>© ${new Date()
+          .toISOString()
+          .substring(
+            0,
+            4
+          )} Australian College of Rural and Remote Medicine. All rights reserved. No part of this
+        document may be reproduced by any means or in any form without express permission in
+        writing from the Australian College of Rural and Remote Medicine.</p>
+        <p>Last updated: ${new Date().toLocaleString("default", {
+          month: "long",
+          year: "numeric",
+        })}</p>
+    </div>
+    </body>
+    </html>
+  `);
+
+  pdfBuffer = await page.pdf({
+    path: "",
+    format: "A4",
+    printBackground: true,
+    margin: { top: 25, right: 100, left: 100, bottom: 50 },
+  });
+
+  generatedPdfBuffers.push(pdfBuffer);
+
   while (nextPageUrl) {
     console.log();
     console.log(chalk.cyan(`Generating PDF of ${nextPageUrl}`));
@@ -152,7 +234,7 @@ export async function generatePdf(
       path: "",
       format: "A4",
       printBackground: true,
-      margin: { top: 25, right: 35, left: 35, bottom: 25 },
+      margin: { top: 40, right: 50, left: 50, bottom: 30 },
     });
 
     generatedPdfBuffers.push(pdfBuffer);
