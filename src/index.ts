@@ -100,7 +100,8 @@ export function getPathSegment(path: string, endSlash = true): string {
 export async function generatePdf(
   initialDocsUrl: string,
   filename = "docusaurus.pdf",
-  puppeteerArgs: Array<string>
+  puppeteerArgs: Array<string>,
+  coverPages: Array<string>
 ): Promise<void> {
   const browser = await puppeteer.launch({ args: puppeteerArgs });
   const page = await browser.newPage();
@@ -112,6 +113,16 @@ export async function generatePdf(
   let scriptPath = "";
 
   let nextPageUrl = initialDocsUrl;
+
+  for (const coverPage of coverPages) {
+    await page.setContent(coverPage);
+    const pdfBuffer = await page.pdf({
+      path: "",
+      format: "A4",
+      printBackground: true,
+    });
+    generatedPdfBuffers.push(pdfBuffer);
+  }
 
   await page.setContent(`
     <!DOCTYPE html>
@@ -250,6 +261,7 @@ export async function generatePdf(
 interface LoadedConfig {
   firstDocPath: string;
   baseUrl: string;
+  coverPages: Array<string>;
 }
 
 async function loadConfig(siteDir: string): Promise<LoadedConfig> {
@@ -272,6 +284,7 @@ async function loadConfig(siteDir: string): Promise<LoadedConfig> {
       }
     }
   }
+  let coverPages = [];
   if (config.plugins) {
     for (const [plugin, options] of config.plugins) {
       if (
@@ -279,6 +292,10 @@ async function loadConfig(siteDir: string): Promise<LoadedConfig> {
         options.routeBasePath
       ) {
         routeBasePaths.push(options.routeBasePath);
+      }
+
+      if (plugin === "docusaurus-pdf" && options.coverPages) {
+        coverPages = options.coverPages;
       }
     }
   }
@@ -294,7 +311,7 @@ async function loadConfig(siteDir: string): Promise<LoadedConfig> {
     );
   }
   const baseUrl = config.baseUrl ?? "/";
-  return { firstDocPath, baseUrl };
+  return { firstDocPath, baseUrl, coverPages };
 }
 
 export async function generatePdfFromBuildWithConfig(
@@ -303,11 +320,12 @@ export async function generatePdfFromBuildWithConfig(
   filename: string,
   puppeteerArgs: Array<string>
 ): Promise<void> {
-  const { firstDocPath, baseUrl } = await loadConfig(siteDir);
+  const { firstDocPath, baseUrl, coverPages } = await loadConfig(siteDir);
   await generatePdfFromBuildSources(
     buildDirPath,
     firstDocPath,
     baseUrl,
+    coverPages,
     filename,
     puppeteerArgs
   );
@@ -317,6 +335,7 @@ export async function generatePdfFromBuildSources(
   buildDirPath: string,
   firstDocPath: string,
   baseUrl: string,
+  coverPages: Array<string>,
   filename: string,
   puppeteerArgs: Array<string>
 ): Promise<void> {
@@ -351,7 +370,8 @@ export async function generatePdfFromBuildSources(
     await generatePdf(
       `http://127.0.0.1:${address.port}${baseUrl}${firstDocPath}`,
       filename,
-      puppeteerArgs
+      puppeteerArgs,
+      coverPages
     );
   } finally {
     httpServer.close();
