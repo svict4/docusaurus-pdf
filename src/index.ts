@@ -1,6 +1,7 @@
 import chalk = require("chalk");
 import puppeteer = require("puppeteer");
 import express = require("express");
+import { LoadContext, Plugin } from "@docusaurus/types";
 import { AddressInfo } from "net";
 import { PDFDocument } from "pdf-lib";
 
@@ -101,7 +102,7 @@ export async function generatePdf(
   initialDocsUrl: string,
   filename = "docusaurus.pdf",
   puppeteerArgs: Array<string>,
-  coverPages: Array<string>
+  coverPages?: Array<string>
 ): Promise<void> {
   const browser = await puppeteer.launch({ args: puppeteerArgs });
   const page = await browser.newPage();
@@ -114,97 +115,20 @@ export async function generatePdf(
 
   let nextPageUrl = initialDocsUrl;
 
-  for (const coverPage of coverPages) {
-    await page.setContent(coverPage);
-    const pdfBuffer = await page.pdf({
-      path: "",
-      format: "A4",
-      printBackground: true,
-    });
-    generatedPdfBuffers.push(pdfBuffer);
+  if (coverPages) {
+    for (const { index, coverPage } of coverPages.map((coverPage, index) => ({ index, coverPage }))) {
+      await page.setContent(coverPage);
+      console.log();
+      console.log(chalk.cyan(`Generating cover page ${index}`));
+      console.log();
+      const pdfBuffer = await page.pdf({
+        path: "",
+        format: "A4",
+        printBackground: true,
+      });
+      generatedPdfBuffers.push(pdfBuffer);
+    }
   }
-
-  await page.setContent(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            * {
-                margin: 0;
-                padding: 0;
-            }
-            .imgbox {
-                display: grid;
-                height: 100%;
-            }
-            .center-fit {
-                max-width: 100%;
-                max-height: 100vh;
-                margin: auto;
-            }
-        </style>
-    </head>
-    <body>
-    <div class="imgbox">
-        <img class="center-fit" src='https://curriculum.acrrm.org.au/frontpages/rural-generalist.png'>
-    </div>
-    </body>
-    </html>
-  `);
-
-  let pdfBuffer = await page.pdf({
-    path: "",
-    format: "A4",
-    printBackground: true,
-  });
-
-  generatedPdfBuffers.push(pdfBuffer);
-
-  await page.setContent(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-           
-        </style>
-    </head>
-    <body>
-    <div>
-        <div style="margin-top: 700px">
-          Australian College of Rural and Remote Medicine<br>
-          Level 2, 410 Queen Street<br>
-          GPO Box 2507<br>
-          Brisbane QLD 4001<br>
-          Ph: 07 3105 8200 Fax: 07 3105 8299<br>
-          Website: www.acrrm.org.au<br>
-          ABN: 12 078 081 848</p>
-        </div>
-        <p><b>Copyright</b></p>
-        <p>© ${new Date()
-          .toISOString()
-          .substring(
-            0,
-            4
-          )} Australian College of Rural and Remote Medicine. All rights reserved. No part of this
-        document may be reproduced by any means or in any form without express permission in
-        writing from the Australian College of Rural and Remote Medicine.</p>
-        <p>Last updated: ${new Date().toLocaleString("default", {
-          month: "long",
-          year: "numeric",
-        })}</p>
-    </div>
-    </body>
-    </html>
-  `);
-
-  pdfBuffer = await page.pdf({
-    path: "",
-    format: "A4",
-    printBackground: true,
-    margin: { top: 25, right: 100, left: 100, bottom: 50 },
-  });
-
-  generatedPdfBuffers.push(pdfBuffer);
 
   while (nextPageUrl) {
     console.log();
@@ -261,7 +185,7 @@ export async function generatePdf(
 interface LoadedConfig {
   firstDocPath: string;
   baseUrl: string;
-  coverPages: Array<string>;
+  coverPagesHTML: Array<string>;
 }
 
 async function loadConfig(siteDir: string): Promise<LoadedConfig> {
@@ -284,7 +208,9 @@ async function loadConfig(siteDir: string): Promise<LoadedConfig> {
       }
     }
   }
-  let coverPages = [];
+  let coverPagesHTML = [];
+
+  // config will overwrite commander
   if (config.plugins) {
     for (const [plugin, options] of config.plugins) {
       if (
@@ -295,7 +221,8 @@ async function loadConfig(siteDir: string): Promise<LoadedConfig> {
       }
 
       if (plugin === "docusaurus-pdf" && options.coverPages) {
-        coverPages = options.coverPages;
+        console.log(options.coverPages);
+        coverPagesHTML = options.coverPages;
       }
     }
   }
@@ -311,7 +238,7 @@ async function loadConfig(siteDir: string): Promise<LoadedConfig> {
     );
   }
   const baseUrl = config.baseUrl ?? "/";
-  return { firstDocPath, baseUrl, coverPages };
+  return { firstDocPath, baseUrl, coverPagesHTML };
 }
 
 export async function generatePdfFromBuildWithConfig(
@@ -320,14 +247,15 @@ export async function generatePdfFromBuildWithConfig(
   filename: string,
   puppeteerArgs: Array<string>
 ): Promise<void> {
-  const { firstDocPath, baseUrl, coverPages } = await loadConfig(siteDir);
+  const { firstDocPath, baseUrl, coverPagesHTML } = await loadConfig(siteDir);
+
   await generatePdfFromBuildSources(
     buildDirPath,
     firstDocPath,
     baseUrl,
-    coverPages,
     filename,
-    puppeteerArgs
+    puppeteerArgs,
+    coverPagesHTML
   );
 }
 
@@ -335,9 +263,9 @@ export async function generatePdfFromBuildSources(
   buildDirPath: string,
   firstDocPath: string,
   baseUrl: string,
-  coverPages: Array<string>,
   filename: string,
-  puppeteerArgs: Array<string>
+  puppeteerArgs: Array<string>,
+  coverPages?: Array<string>
 ): Promise<void> {
   const app = express();
 
@@ -347,7 +275,7 @@ export async function generatePdfFromBuildSources(
   } catch (error) {
     throw new Error(
       `Could not find docusaurus build directory at "${buildDirPath}". ` +
-        'Have you run "docusaurus build"?'
+      'Have you run "docusaurus build"?'
     );
   }
   if (!buildDirStat.isDirectory()) {
@@ -375,5 +303,20 @@ export async function generatePdfFromBuildSources(
     );
   } finally {
     httpServer.close();
+  }
+}
+
+interface PluginOptions {
+  coverPages?: Array<string>;
+}
+
+module.exports = function (
+  context: LoadContext,
+  options?: PluginOptions
+): Plugin<void> {
+  return {
+    name: 'docusaurus-pdf'
+    // noop
+    // config is derived from loadConfig()
   }
 }
